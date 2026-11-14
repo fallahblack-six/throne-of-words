@@ -26,13 +26,107 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Prepare web files
+      - name: Prepare web files and background music
         run: |
           mkdir -p www
           cp index.html www/index.html
+          cp music_zapsplat_game_music_action_uplifting_electro_house_anthem_retro_melody_026.mp3 www/music.mp3
           if [ -f icon-only.png ]; then
             cp icon-only.png www/icon-only.png
           fi
+
+      - name: Add background music controls
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("www/index.html")
+          html = path.read_text(encoding="utf-8")
+
+          script = r"""
+          <script>
+          (() => {
+            if (window.__throneMusicInstalled) return;
+            window.__throneMusicInstalled = true;
+
+            const audio = new Audio("music.mp3");
+            audio.loop = true;
+            audio.preload = "auto";
+            audio.volume = 0.35;
+
+            let enabled = true;
+            try {
+              enabled = localStorage.getItem("throne_music_enabled") !== "false";
+            } catch (_) {}
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = "♫ موسیقی: روشن";
+            button.setAttribute("aria-label", "روشن یا خاموش کردن موسیقی");
+            button.style.cssText = [
+              "position:fixed",
+              "right:max(14px, env(safe-area-inset-right))",
+              "bottom:max(14px, env(safe-area-inset-bottom))",
+              "z-index:2147483647",
+              "padding:10px 14px",
+              "border:1px solid rgba(255,255,255,.28)",
+              "border-radius:24px",
+              "background:rgba(16,22,31,.92)",
+              "color:#fff",
+              "font:600 13px sans-serif",
+              "box-shadow:0 3px 14px rgba(0,0,0,.3)",
+              "cursor:pointer",
+              "touch-action:manipulation"
+            ].join(";");
+
+            const refresh = () => {
+              button.textContent = enabled ? "♫ موسیقی: روشن" : "♫ موسیقی: خاموش";
+              button.style.opacity = enabled ? "1" : ".78";
+            };
+
+            const start = () => {
+              if (!enabled) return;
+              audio.play().catch(() => {});
+            };
+
+            button.addEventListener("click", () => {
+              enabled = !enabled;
+              try {
+                localStorage.setItem("throne_music_enabled", String(enabled));
+              } catch (_) {}
+              if (enabled) start();
+              else audio.pause();
+              refresh();
+            });
+
+            document.addEventListener("pointerdown", start, {
+              once: true,
+              passive: true
+            });
+            document.addEventListener("keydown", start, { once: true });
+
+            document.body.appendChild(button);
+            refresh();
+
+            if (enabled) start();
+          })();
+          </script>
+          """
+
+          if re.search(r"</body\s*>", html, flags=re.IGNORECASE):
+              html = re.sub(
+                  r"</body\s*>",
+                  lambda m: script + m.group(0),
+                  html,
+                  count=1,
+                  flags=re.IGNORECASE
+              )
+          else:
+              html += script
+
+          path.write_text(html, encoding="utf-8")
+          print("Background music controls added")
 
       - name: Add Android platform
         run: npx cap add android
